@@ -14,6 +14,7 @@ from typing import Dict, Any
 from flask import Flask, jsonify
 from config import Settings
 from openrouter_brain import OpenRouterBrain
+from groq_brain import GroqBrain
 from alpaca_executor import AlpacaExecutor
 from zerodha_executor import ZerodhaExecutor
 
@@ -166,7 +167,10 @@ class TradingBotService:
     
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.ai_brain = OpenRouterBrain(settings)
+        if settings.AI_PROVIDER == "groq":
+            self.ai_brain = GroqBrain(settings)
+        else:
+            self.ai_brain = OpenRouterBrain(settings)
         self.market_checker = MarketHoursChecker(settings.BROKER)
         
         # Initialize broker executor
@@ -191,9 +195,9 @@ class TradingBotService:
             logger.info(f"✓ Connected to {self.settings.BROKER.upper()} | Account: {account.get('id', 'unknown')}")
             logger.info(f"  Cash: ${account.get('cash', 0):.2f} | Buying Power: ${account.get('buying_power', 0):.2f}")
             
-            # Verify OpenRouter connection
+            # Verify AI brain connection
             model_info = self.ai_brain.get_model_info()
-            logger.info(f"✓ Connected to OpenRouter | Model: {model_info}")
+            logger.info(f"✓ Connected to {self.settings.AI_PROVIDER.upper()} | Model: {model_info}")
             
             # Get initial positions
             positions = await self.executor.get_positions()

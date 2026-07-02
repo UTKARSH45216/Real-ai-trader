@@ -23,6 +23,15 @@ class Settings:
         self.OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
         self.OPENROUTER_TEMPERATURE = float(os.getenv("OPENROUTER_TEMPERATURE", "0.3"))
         self.OPENROUTER_MAX_TOKENS = int(os.getenv("OPENROUTER_MAX_TOKENS", "1024"))
+
+        # API Keys (Groq)
+        self.GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+        self.GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+        self.GROQ_TEMPERATURE = float(os.getenv("GROQ_TEMPERATURE", "0.3"))
+        self.GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "1024"))
+
+        # Which AI brain to use: "groq" or "openrouter"
+        self.AI_PROVIDER = os.getenv("AI_PROVIDER", "groq")
         
         # Alpaca settings
         self.ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
@@ -55,8 +64,14 @@ class Settings:
         """Validate that required settings are present"""
         errors = []
         
-        if not self.OPENROUTER_API_KEY:
-            errors.append("OPENROUTER_API_KEY is required")
+        if self.AI_PROVIDER == "groq":
+            if not self.GROQ_API_KEY:
+                errors.append("GROQ_API_KEY is required for AI_PROVIDER=groq")
+        elif self.AI_PROVIDER == "openrouter":
+            if not self.OPENROUTER_API_KEY:
+                errors.append("OPENROUTER_API_KEY is required for AI_PROVIDER=openrouter")
+        else:
+            errors.append(f"Unknown AI_PROVIDER: {self.AI_PROVIDER}")
         
         if self.BROKER == "alpaca":
             if not self.ALPACA_API_KEY:
