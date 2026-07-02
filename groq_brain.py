@@ -13,7 +13,7 @@ from config import Settings
 
 logger = logging.getLogger(__name__)
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_URL = "https://groq.com"
 
 
 class GroqBrain:
@@ -52,18 +52,16 @@ class GroqBrain:
     def analyze_patterns(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Use a Groq-hosted model to analyze market patterns and return a
-        structured decision. Low temperature for deterministic analysis.
+        structured decision with custom quantity sizing.
         """
         try:
             market_summary = self._format_market_data(market_data)
 
-            # CRITICAL FIX: The word 'JSON' must appear prominently in the prompt 
-            # for Groq's response_format={"type": "json_object"} to validate without a 400 error.
             prompt = f"""You are an expert quantitative trader analyzing real-time market data.
 
 {market_summary}
 
-Based on the technical indicators, price action, and volume patterns above, determine the optimal trading action.
+Based on the technical indicators, price action, and volume patterns above, determine the optimal trading action and position sizing.
 
 Consider:
 1. RSI extremes (< 30 = oversold, > 70 = overbought)
@@ -71,11 +69,12 @@ Consider:
 3. Volume trends
 4. Overall market momentum
 
-Respond with a valid JSON object in this exact schema format:
+Respond with a valid JSON object in this exact schema format. Choose a quantity between 1 and 10 shares depending on the strength and confidence of the chart setup:
 {{
   "decision": "BUY|SELL|HOLD", 
+  "quantity": 5,
   "reason": "detailed reasoning text here", 
-  "confidence": 0.5
+  "confidence": 0.85
 }}"""
 
             headers = {
@@ -89,7 +88,7 @@ Respond with a valid JSON object in this exact schema format:
                         "role": "system",
                         "content": (
                             "You are a professional quantitative trading analyst. "
-                            "You always output output structured data in JSON format matching the schema requested. "
+                            "You always output structured data in JSON format matching the schema requested. "
                             "Do not include any conversational text or markdown blocks."
                         ),
                     },
@@ -104,7 +103,6 @@ Respond with a valid JSON object in this exact schema format:
                 GROQ_URL, headers=headers, json=payload, timeout=30
             )
             
-            # Diagnostic handling to catch the model naming or token parameter mismatches
             if response.status_code == 400:
                 logger.error(f"Groq 400 Bad Request Diagnostic Details: {response.text}")
                 
@@ -121,12 +119,13 @@ Respond with a valid JSON object in this exact schema format:
             logger.error(f"Error in pattern analysis: {str(e)}", exc_info=True)
             return {
                 "decision": "HOLD",
+                "quantity": 0,
                 "reason": f"Analysis error: {str(e)}",
                 "confidence": 0.0,
             }
 
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
-        """Parse model response and extract decision."""
+        """Parse model response and extract decision and chosen quantity."""
         try:
             if "{" in response_text and "}" in response_text:
                 json_start = response_text.find("{")
@@ -140,6 +139,7 @@ Respond with a valid JSON object in this exact schema format:
 
                 return {
                     "decision": decision,
+                    "quantity": int(parsed.get("quantity", 1)),
                     "reason": parsed.get("reason", "No reason provided"),
                     "confidence": float(parsed.get("confidence", 0.5)),
                 }
@@ -156,6 +156,7 @@ Respond with a valid JSON object in this exact schema format:
 
             return {
                 "decision": decision,
+                "quantity": 1,
                 "reason": response_text[:200],
                 "confidence": 0.5,
             }
@@ -164,6 +165,7 @@ Respond with a valid JSON object in this exact schema format:
             logger.error(f"Error parsing response: {str(e)}")
             return {
                 "decision": "HOLD",
+                "quantity": 0,
                 "reason": f"Parse error: {str(e)}",
                 "confidence": 0.0,
             }
