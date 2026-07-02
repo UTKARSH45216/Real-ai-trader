@@ -57,6 +57,8 @@ class GroqBrain:
         try:
             market_summary = self._format_market_data(market_data)
 
+            # CRITICAL FIX: The word 'JSON' must appear prominently in the prompt 
+            # for Groq's response_format={"type": "json_object"} to validate without a 400 error.
             prompt = f"""You are an expert quantitative trader analyzing real-time market data.
 
 {market_summary}
@@ -69,8 +71,12 @@ Consider:
 3. Volume trends
 4. Overall market momentum
 
-Respond with ONLY a JSON object in this exact format, no other text:
-{{"decision": "BUY|SELL|HOLD", "reason": "detailed reasoning", "confidence": 0.0-1.0}}"""
+Respond with a valid JSON object in this exact schema format:
+{{
+  "decision": "BUY|SELL|HOLD", 
+  "reason": "detailed reasoning text here", 
+  "confidence": 0.5
+}}"""
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -83,8 +89,8 @@ Respond with ONLY a JSON object in this exact format, no other text:
                         "role": "system",
                         "content": (
                             "You are a professional quantitative trading analyst. "
-                            "Always respond with ONLY valid JSON containing decision, "
-                            "reason, and confidence fields. No markdown, no commentary."
+                            "You always output output structured data in JSON format matching the schema requested. "
+                            "Do not include any conversational text or markdown blocks."
                         ),
                     },
                     {"role": "user", "content": prompt},
@@ -97,6 +103,11 @@ Respond with ONLY a JSON object in this exact format, no other text:
             response = requests.post(
                 GROQ_URL, headers=headers, json=payload, timeout=30
             )
+            
+            # Diagnostic handling to catch the model naming or token parameter mismatches
+            if response.status_code == 400:
+                logger.error(f"Groq 400 Bad Request Diagnostic Details: {response.text}")
+                
             response.raise_for_status()
             data = response.json()
 
@@ -133,7 +144,6 @@ Respond with ONLY a JSON object in this exact format, no other text:
                     "confidence": float(parsed.get("confidence", 0.5)),
                 }
 
-            # Fallback: search for keywords
             text_upper = response_text.upper()
             if "BUY" in text_upper and text_upper.find("BUY") < text_upper.find(
                 "SELL" if "SELL" in text_upper else "\uffff"
