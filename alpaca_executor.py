@@ -38,7 +38,7 @@ class AlpacaExecutor:
                 'buying_power': float(account.buying_power),
                 'portfolio_value': float(account.portfolio_value),
                 'multiplier': float(account.multiplier),
-                'status': account.account_status
+                'status': account.status
             }
         except Exception as e:
             logger.error(f"Error fetching account: {str(e)}")
@@ -54,7 +54,7 @@ class AlpacaExecutor:
                 positions.append({
                     'symbol': pos.symbol,
                     'qty': float(pos.qty),
-                    'avg_fill_price': float(pos.avg_fill_price),
+                    'avg_fill_price': float(pos.avg_entry_price),
                     'current_price': float(pos.current_price),
                     'unrealized_pl': float(pos.unrealized_pl),
                     'unrealized_plpc': float(pos.unrealized_plpc),
