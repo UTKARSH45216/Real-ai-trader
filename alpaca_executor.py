@@ -21,10 +21,11 @@ class AlpacaExecutor:
     
     def __init__(self, settings: Settings):
         self.settings = settings
+        is_paper = "paper" in (settings.ALPACA_BASE_URL or "").lower()
         self.client = TradingClient(
             api_key=settings.ALPACA_API_KEY,
             secret_key=settings.ALPACA_SECRET_KEY,
-            base_url=settings.ALPACA_BASE_URL
+            paper=is_paper
         )
     
     async def get_account(self) -> Dict[str, Any]:
