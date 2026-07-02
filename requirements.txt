@@ -1,5 +1,4 @@
 flask==3.0.0
-google-genai==2.10.0
 alpaca-py==0.22.0
 kiteconnect==5.2.0
 python-dotenv==1.0.0

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from config import Settings
-from gemini_brain import GeminiBrain
+from openrouter_brain import OpenRouterBrain
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class BacktestEngine:
     
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.gemini_brain = GeminiBrain(settings)
+        self.ai_brain = OpenRouterBrain(settings)
         self.trades = []
         self.portfolio_value = 100000  # Starting capital
         self.cash = 100000
@@ -75,8 +75,8 @@ class BacktestEngine:
                 current_date += timedelta(days=1)
                 continue
             
-            # Get Gemini decision
-            decision = self.gemini_brain.analyze_patterns(market_data)
+            # Get AI decision
+            decision = self.ai_brain.analyze_patterns(market_data)
             
             # Execute trade
             if decision['decision'] in ['BUY', 'SELL']:

@@ -18,11 +18,11 @@ class Settings:
         # Broker settings
         self.BROKER = os.getenv("BROKER", "alpaca")
         
-        # API Keys
-        self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self.GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "0.3"))
-        self.GEMINI_MAX_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "1024"))
+        # API Keys (OpenRouter - free tier)
+        self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+        self.OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+        self.OPENROUTER_TEMPERATURE = float(os.getenv("OPENROUTER_TEMPERATURE", "0.3"))
+        self.OPENROUTER_MAX_TOKENS = int(os.getenv("OPENROUTER_MAX_TOKENS", "1024"))
         
         # Alpaca settings
         self.ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
@@ -43,7 +43,9 @@ class Settings:
         
         self.ORDER_QUANTITY = int(os.getenv("ORDER_QUANTITY", "1"))
         self.MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
-        self.CYCLE_INTERVAL_SECONDS = int(os.getenv("CYCLE_INTERVAL_SECONDS", "60"))
+        # 120s default keeps daily AI calls (~195 during a 6.5hr market session)
+        # under OpenRouter's free-tier 200 requests/day cap
+        self.CYCLE_INTERVAL_SECONDS = int(os.getenv("CYCLE_INTERVAL_SECONDS", "120"))
         
         # Server settings
         self.PORT = int(os.getenv("PORT", "5000"))
@@ -53,8 +55,8 @@ class Settings:
         """Validate that required settings are present"""
         errors = []
         
-        if not self.GEMINI_API_KEY:
-            errors.append("GEMINI_API_KEY is required")
+        if not self.OPENROUTER_API_KEY:
+            errors.append("OPENROUTER_API_KEY is required")
         
         if self.BROKER == "alpaca":
             if not self.ALPACA_API_KEY:

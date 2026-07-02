@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional, Union
 
 from config import Settings
-from gemini_brain import GeminiBrain
+from openrouter_brain import OpenRouterBrain
 from alpaca_executor import AlpacaExecutor
 from zerodha_executor import ZerodhaExecutor
 
@@ -32,7 +32,7 @@ class TradingBot:
     
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.gemini_brain = GeminiBrain(settings)
+        self.ai_brain = OpenRouterBrain(settings)
         
         # Initialize broker executor based on configuration
         if settings.BROKER == "alpaca":
@@ -58,9 +58,9 @@ class TradingBot:
             logger.info(f"✓ Connected to {broker_name} | Account: {account.get('id', 'unknown')}")
             logger.info(f"  Cash: ${account.get('cash', 0):.2f} | Buying Power: ${account.get('buying_power', 0):.2f}")
             
-            # Verify Gemini connection
-            model_info = self.gemini_brain.get_model_info()
-            logger.info(f"✓ Connected to Gemini | Model: {model_info}")
+            # Verify OpenRouter connection
+            model_info = self.ai_brain.get_model_info()
+            logger.info(f"✓ Connected to OpenRouter | Model: {model_info}")
             
             # Get initial positions
             positions = await self.executor.get_positions()
@@ -90,9 +90,9 @@ class TradingBot:
             
             logger.info(f"Market data fetched: {len(market_data)} symbols")
             
-            # Step 2: Get Gemini analysis
-            decision = self.gemini_brain.analyze_patterns(market_data)
-            logger.info(f"Gemini Decision: {decision['decision']} | Reason: {decision['reason'][:100]}...")
+            # Step 2: Get AI analysis
+            decision = self.ai_brain.analyze_patterns(market_data)
+            logger.info(f"AI Decision: {decision['decision']} | Reason: {decision['reason'][:100]}...")
             
             # Step 3: Execute orders if signal present
             if decision['decision'] in ['BUY', 'SELL']:
