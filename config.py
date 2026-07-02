@@ -26,9 +26,12 @@ class Settings:
 
         # API Keys (Groq)
         self.GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-        self.GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
-        self.GROQ_TEMPERATURE = float(os.getenv("GROQ_TEMPERATURE", "0.3"))
-        self.GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "1024"))
+        
+        # CRITICAL FIX: Changed from deprecated 'llama3-70b-8192' to an active, modern free tier model.
+        # Options: 'llama-3.3-70b-versatile' (Smartest) or 'llama-3.1-8b-instant' (Fastest)
+        self.GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        self.GROQ_TEMPERATURE = float(os.getenv("GROQ_TEMPERATURE", "0.2")) # Slightly lower for firmer JSON matching
+        self.GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "512")) # Reduced token ceiling to protect free TPM limits
 
         # Which AI brain to use: "groq" or "openrouter"
         self.AI_PROVIDER = os.getenv("AI_PROVIDER", "groq")
@@ -44,16 +47,17 @@ class Settings:
         self.ZERODHA_REDIRECT_URL = os.getenv("ZERODHA_REDIRECT_URL", "http://localhost:8080")
         
         # Trading settings
-        symbols_str = os.getenv("SYMBOLS_TO_MONITOR", '["AAPL","MSFT"]')
+        # Ensure your system variables override matches your expected targets
+        symbols_str = os.getenv("SYMBOLS_TO_MONITOR", '["AAPL","MSFT","GOOGL","NVDA","TSLA"]')
         try:
             self.SYMBOLS_TO_MONITOR = json.loads(symbols_str)
         except:
-            self.SYMBOLS_TO_MONITOR = ["AAPL", "MSFT"]
+            self.SYMBOLS_TO_MONITOR = ["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA"]
         
         self.ORDER_QUANTITY = int(os.getenv("ORDER_QUANTITY", "1"))
         self.MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
-        # 120s default keeps daily AI calls (~195 during a 6.5hr market session)
-        # under OpenRouter's free-tier 200 requests/day cap
+        
+        # 120s default keeps daily AI calls under the limit
         self.CYCLE_INTERVAL_SECONDS = int(os.getenv("CYCLE_INTERVAL_SECONDS", "120"))
         
         # Server settings
@@ -94,4 +98,3 @@ class Settings:
 
 # Create default settings instance
 settings = Settings()
-
