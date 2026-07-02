@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 
 from google import genai
+from google.genai import types
 from config import Settings
 
 logger = logging.getLogger(__name__)
@@ -83,11 +84,11 @@ Provide your trading decision with clear reasoning."""
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                generation_config={
-                    "temperature": self.settings.GEMINI_TEMPERATURE,
-                    "max_output_tokens": self.settings.GEMINI_MAX_TOKENS,
-                },
-                system_instruction="You are a professional quantitative trading analyst. Always respond with a clear BUY, SELL, or HOLD decision with detailed reasoning.",
+                config=types.GenerateContentConfig(
+                    temperature=self.settings.GEMINI_TEMPERATURE,
+                    max_output_tokens=self.settings.GEMINI_MAX_TOKENS,
+                    system_instruction="You are a professional quantitative trading analyst. Always respond with a clear BUY, SELL, or HOLD decision with detailed reasoning.",
+                ),
             )
             
             # Parse response

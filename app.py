@@ -310,12 +310,19 @@ def run_bot_async():
     """Run bot in asyncio event loop."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
-    bot = TradingBotService(settings)
+
     try:
+        bot = TradingBotService(settings)
         loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot interrupted")
+    except Exception as e:
+        # Catch anything that happens during bot construction or run(),
+        # not just inside bot.run(), so startup errors are never silently
+        # swallowed by the background thread.
+        logger.error(f"Bot thread crashed: {str(e)}", exc_info=True)
+        bot_state['status'] = 'ERROR'
+        bot_state['error'] = str(e)
     finally:
         loop.close()
 
