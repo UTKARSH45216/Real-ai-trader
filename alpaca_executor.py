@@ -82,7 +82,6 @@ class AlpacaExecutor:
                 secret_key=self.settings.ALPACA_SECRET_KEY
             )
             
-            # Start with a standard 6-hour lookback window
             now_utc = datetime.now(timezone.utc)
             start_time = now_utc - timedelta(hours=6)
             
@@ -101,8 +100,6 @@ class AlpacaExecutor:
                     if bars and symbol in bars.data:
                         bar_list = bars.data[symbol]
                     
-                    # AFTER-HOURS FIX: If no data found in the last 6 hours due to low IEX volume, 
-                    # trigger an aggressive 24-hour lookback fallback to recover the latest valid session data.
                     if not bar_list or len(bar_list) < 20:
                         logger.info(f"Low after-hours volume detected for {symbol}. Triggering 24h lookup fallback...")
                         fallback_start = now_utc - timedelta(hours=24)
@@ -116,14 +113,12 @@ class AlpacaExecutor:
                         if fallback_bars and symbol in fallback_bars.data:
                             bar_list = fallback_bars.data[symbol]
                     
-                    # If still empty after fallback, skip the symbol safely
                     if not bar_list or len(bar_list) == 0:
                         logger.warning(f"No data available for {symbol} even after 24h fallback.")
                         continue
                     
                     latest_bar = bar_list[-1]
                     
-                    # Calculate technical indicators
                     rsi = self._calculate_rsi(symbol, bar_list)
                     ma20 = self._calculate_moving_average(symbol, bar_list, 20)
                     change_pct = ((latest_bar.close - latest_bar.open) / latest_bar.open * 100) if latest_bar.open > 0 else 0
@@ -191,8 +186,8 @@ class AlpacaExecutor:
             logger.warning(f"Error calculating MA for {symbol}: {str(e)}")
             return None
     
-    async def execute_trade(self, symbol: str, decision: str, reason: str) -> Optional[Dict[str, Any]]:
-        """Execute a buy or sell order for a targeted symbol."""
+    async def execute_trade(self, symbol: str, decision: str, quantity: int, reason: str) -> Optional[Dict[str, Any]]:
+        """Execute a buy or sell order for a targeted symbol with AI-determined sizing."""
         try:
             if decision not in ['BUY', 'SELL']:
                 logger.warning(f"Invalid decision: {decision}")
@@ -202,29 +197,31 @@ class AlpacaExecutor:
                 logger.warning(f"Symbol {symbol} is not inside the monitored symbols list.")
                 return None
             
-            # Verify we don't exceed max positions
             positions = await self.get_positions()
             if len(positions) >= self.settings.MAX_POSITIONS and decision == 'BUY':
-                logger.warning(f"Max positions ({self.settings.MAX_POSITIONS}) reached, skipping BUY for {symbol}")
+                logger.warning(f"Max positions reached, skipping BUY for {symbol}")
                 return None
             
-            # Check position exists for SELL
-            position_exists = any(p['symbol'] == symbol for p in positions)
-            if decision == 'SELL' and not position_exists:
-                logger.warning(f"No position in {symbol}, skipping SELL")
-                return None
+            if decision == 'BUY':
+                trade_qty = quantity
+            elif decision == 'SELL':
+                matching_position = next((p for p in positions if p['symbol'] == symbol), None)
+                if not matching_position:
+                    logger.warning(f"No position in {symbol}, skipping SELL")
+                    return None
+                # Sell what AI wants, capped at what we actually own to prevent naked shorting
+                trade_qty = min(quantity, int(matching_position['qty']))
             
-            # Execute targeted order using only positive quantities
             order_request = MarketOrderRequest(
                 symbol=symbol,
-                qty=self.settings.ORDER_QUANTITY,
+                qty=trade_qty,
                 side=OrderSide.BUY if decision == 'BUY' else OrderSide.SELL,
                 time_in_force=TimeInForce.DAY
             )
             
             order = self.client.submit_order(order_request)
             
-            logger.info(f"Order submitted: {symbol} {decision} x{self.settings.ORDER_QUANTITY}")
+            logger.info(f"Order submitted by AI: {symbol} {decision} x{trade_qty}")
             logger.info(f"Reason: {reason}")
             
             return {
