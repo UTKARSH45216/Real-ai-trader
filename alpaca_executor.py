@@ -6,7 +6,7 @@ Handles market data fetching and order execution.
 import asyncio
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
@@ -68,36 +68,57 @@ class AlpacaExecutor:
             return []
     
     async def fetch_market_data(self) -> Dict[str, Dict[str, Any]]:
-        """Fetch live 1-minute OHLCV data for monitored symbols."""
+        """Fetch live 1-minute OHLCV data for monitored symbols with after-hours fallbacks."""
         market_data = {}
         
         try:
             from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import StockBarsRequest
             from alpaca.data.timeframe import TimeFrame
+            from alpaca.data.enums import DataFeed
             
             client = StockHistoricalDataClient(
                 api_key=self.settings.ALPACA_API_KEY,
                 secret_key=self.settings.ALPACA_SECRET_KEY
             )
             
-            # Fetch latest bar data
+            # Start with a standard 6-hour lookback window
+            now_utc = datetime.now(timezone.utc)
+            start_time = now_utc - timedelta(hours=6)
+            
             request_params = StockBarsRequest(
                 symbol_or_symbols=self.settings.SYMBOLS_TO_MONITOR,
                 timeframe=TimeFrame.Minute,
-                limit=20
+                start=start_time,
+                feed=DataFeed.IEX
             )
             
             bars = client.get_stock_bars(request_params)
             
             for symbol in self.settings.SYMBOLS_TO_MONITOR:
                 try:
-                    if symbol not in bars.data:
-                        logger.warning(f"No data for {symbol}")
-                        continue
+                    bar_list = []
+                    if bars and symbol in bars.data:
+                        bar_list = bars.data[symbol]
                     
-                    bar_list = bars.data[symbol]
-                    if not bar_list:
+                    # AFTER-HOURS FIX: If no data found in the last 6 hours due to low IEX volume, 
+                    # trigger an aggressive 24-hour lookback fallback to recover the latest valid session data.
+                    if not bar_list or len(bar_list) < 20:
+                        logger.info(f"Low after-hours volume detected for {symbol}. Triggering 24h lookup fallback...")
+                        fallback_start = now_utc - timedelta(hours=24)
+                        fallback_params = StockBarsRequest(
+                            symbol_or_symbols=[symbol],
+                            timeframe=TimeFrame.Minute,
+                            start=fallback_start,
+                            feed=DataFeed.IEX
+                        )
+                        fallback_bars = client.get_stock_bars(fallback_params)
+                        if fallback_bars and symbol in fallback_bars.data:
+                            bar_list = fallback_bars.data[symbol]
+                    
+                    # If still empty after fallback, skip the symbol safely
+                    if not bar_list or len(bar_list) == 0:
+                        logger.warning(f"No data available for {symbol} even after 24h fallback.")
                         continue
                     
                     latest_bar = bar_list[-1]
@@ -170,20 +191,21 @@ class AlpacaExecutor:
             logger.warning(f"Error calculating MA for {symbol}: {str(e)}")
             return None
     
-    async def execute_trade(self, decision: str, reason: str) -> Optional[Dict[str, Any]]:
-        """Execute a buy or sell order."""
+    async def execute_trade(self, symbol: str, decision: str, reason: str) -> Optional[Dict[str, Any]]:
+        """Execute a buy or sell order for a targeted symbol."""
         try:
             if decision not in ['BUY', 'SELL']:
                 logger.warning(f"Invalid decision: {decision}")
                 return None
             
-            # Use first monitored symbol for simplicity (production: add symbol selection)
-            symbol = self.settings.SYMBOLS_TO_MONITOR[0]
+            if symbol not in self.settings.SYMBOLS_TO_MONITOR:
+                logger.warning(f"Symbol {symbol} is not inside the monitored symbols list.")
+                return None
             
             # Verify we don't exceed max positions
             positions = await self.get_positions()
             if len(positions) >= self.settings.MAX_POSITIONS and decision == 'BUY':
-                logger.warning(f"Max positions ({self.settings.MAX_POSITIONS}) reached, skipping BUY")
+                logger.warning(f"Max positions ({self.settings.MAX_POSITIONS}) reached, skipping BUY for {symbol}")
                 return None
             
             # Check position exists for SELL
@@ -192,10 +214,10 @@ class AlpacaExecutor:
                 logger.warning(f"No position in {symbol}, skipping SELL")
                 return None
             
-            # Execute order
+            # Execute targeted order using only positive quantities
             order_request = MarketOrderRequest(
                 symbol=symbol,
-                qty=self.settings.ORDER_QUANTITY if decision == 'BUY' else -self.settings.ORDER_QUANTITY,
+                qty=self.settings.ORDER_QUANTITY,
                 side=OrderSide.BUY if decision == 'BUY' else OrderSide.SELL,
                 time_in_force=TimeInForce.DAY
             )
@@ -206,14 +228,10 @@ class AlpacaExecutor:
             logger.info(f"Reason: {reason}")
             
             return {
-                'order_id': order.id,
-                'symbol': order.symbol,
-                'qty': float(order.qty),
-                'side': order.side,
-                'type': order.order_type,
-                'status': order.status
+                'order_id': str(order.id),
+                'symbol': str(order.symbol),
+                'status': str(order.status)
             }
-            
         except Exception as e:
-            logger.error(f"Error executing trade: {str(e)}", exc_info=True)
+            logger.error(f"Error executing trade for {symbol}: {str(e)}")
             return None
