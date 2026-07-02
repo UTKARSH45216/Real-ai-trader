@@ -13,7 +13,7 @@ from typing import Dict, Any
 
 from flask import Flask, jsonify
 from config import Settings
-from gemini_brain import GeminiBrain
+from openrouter_brain import OpenRouterBrain
 from alpaca_executor import AlpacaExecutor
 from zerodha_executor import ZerodhaExecutor
 
@@ -166,7 +166,7 @@ class TradingBotService:
     
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.gemini_brain = GeminiBrain(settings)
+        self.ai_brain = OpenRouterBrain(settings)
         self.market_checker = MarketHoursChecker(settings.BROKER)
         
         # Initialize broker executor
@@ -191,9 +191,9 @@ class TradingBotService:
             logger.info(f"✓ Connected to {self.settings.BROKER.upper()} | Account: {account.get('id', 'unknown')}")
             logger.info(f"  Cash: ${account.get('cash', 0):.2f} | Buying Power: ${account.get('buying_power', 0):.2f}")
             
-            # Verify Gemini connection
-            model_info = self.gemini_brain.get_model_info()
-            logger.info(f"✓ Connected to Gemini | Model: {model_info}")
+            # Verify OpenRouter connection
+            model_info = self.ai_brain.get_model_info()
+            logger.info(f"✓ Connected to OpenRouter | Model: {model_info}")
             
             # Get initial positions
             positions = await self.executor.get_positions()
@@ -227,10 +227,10 @@ class TradingBotService:
             
             logger.info(f"Market data fetched: {len(market_data)} symbols")
             
-            # Step 2: Get Gemini analysis
-            decision = self.gemini_brain.analyze_patterns(market_data)
+            # Step 2: Get AI analysis
+            decision = self.ai_brain.analyze_patterns(market_data)
             bot_state['last_decision'] = decision
-            logger.info(f"Gemini Decision: {decision['decision']} | Reason: {decision['reason'][:100]}...")
+            logger.info(f"AI Decision: {decision['decision']} | Reason: {decision['reason'][:100]}...")
             
             # Step 3: Execute orders if signal present
             if decision['decision'] in ['BUY', 'SELL']:
@@ -278,9 +278,9 @@ class TradingBotService:
                     bot_state['market_open'] = True
                     bot_state['status'] = 'MARKET_OPEN - TRADING'
                     
-                    # Run trading cycle every 1 second when market is open
+                    # Run trading cycle at the configured interval when market is open
                     await self.run_trading_cycle()
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(self.settings.CYCLE_INTERVAL_SECONDS)
                 
                 else:
                     bot_state['market_open'] = False
