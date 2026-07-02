@@ -48,6 +48,7 @@ bot_lock = threading.Lock()
 
 class MarketHoursChecker:
     """Check if market is open based on broker and timezone."""
+    
     def __init__(self, broker: str):
         self.broker = broker
         
@@ -91,6 +92,7 @@ class MarketHoursChecker:
         return next_day.replace(hour=9, minute=30, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S %Z")
 class TradingBotService:
     """Trading bot running as a service with embedded risk metrics."""
+    
     def __init__(self, settings: Settings):
         self.settings = settings
         if settings.AI_PROVIDER == "groq":
@@ -119,43 +121,64 @@ class TradingBotService:
     async def run_trading_cycle(self) -> None:
         bot_state['iterations'] += 1
         cycle_start = datetime.now()
+        
         try:
-            # STOP LOSS ENGINE: Checks if any stock you own is bleeding out
+            logger.info(f"\n{'='*60}")
+            logger.info(f"CYCLE #{bot_state['iterations']} | {cycle_start.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"{'='*60}")
+            
+            # Stop-loss tracking
             current_positions = await self.executor.get_positions()
-            STOP_LOSS_PERC = -0.02 # -2% maximum drop limit
+            STOP_LOSS_PERC = -0.02 
             
             for pos in current_positions:
                 symbol = pos['symbol']
                 unrealized_plpc = pos.get('unrealized_plpc', 0.0)
+                
                 if unrealized_plpc <= STOP_LOSS_PERC:
-                    logger.warning(f"🚨 RISK TRIGGERED: {symbol} down {unrealized_plpc*100:.2f}%. Liquidating!")
-                    await self.executor.execute_trade(symbol=symbol, decision='SELL', reason="Risk safety limit breached")
+                    logger.warning(f"🚨 AUTOMATED RISK SAFETY TRIGGERED: [{symbol}] down {unrealized_plpc*100:.2f}%. Liquidating!")
+                    await self.executor.execute_trade(
+                        symbol=symbol,
+                        decision='SELL',
+                        quantity=int(pos['qty']),
+                        reason="Emergency risk boundary breached"
+                    )
                     continue
 
-            # FETCH AND LOOP PROCESS DATA TICKER-BY-TICKER
             market_data = await self.executor.fetch_market_data()
             if not market_data:
+                logger.warning("No market data available, skipping cycle")
                 return
                 
             for symbol, single_asset_data in market_data.items():
                 packaged_data = {symbol: single_asset_data}
                 decision = self.ai_brain.analyze_patterns(packaged_data)
-                bot_state['last_decision'][symbol] = decision
+                
+                with bot_lock:
+                    bot_state['last_decision'][symbol] = decision
                 
                 if decision['decision'] in ['BUY', 'SELL']:
-                    execution_result = await self.executor.execute_trade(symbol=symbol, decision=decision['decision'], reason=decision['reason'])
+                    execution_result = await self.executor.execute_trade(
+                        symbol=symbol,
+                        decision=decision['decision'],
+                        quantity=decision.get('quantity', 1),
+                        reason=decision['reason']
+                    )
                     if execution_result:
-                        bot_state['last_trade'][symbol] = execution_result
+                        with bot_lock:
+                            bot_state['last_trade'][symbol] = execution_result
                 else:
                     logger.info(f"[{symbol}] Status: HOLD")
                     
-            # Refresh app database metrics
             updated_positions = await self.executor.get_positions()
             account = await self.executor.get_account()
+            
             with bot_lock:
                 bot_state['positions'] = updated_positions
                 bot_state['account_info'] = account
+                
             bot_state['last_cycle_time'] = (datetime.now() - cycle_start).total_seconds()
+            
         except Exception as e:
             logger.error(f"Error in trading cycle: {str(e)}")
 
@@ -163,6 +186,7 @@ class TradingBotService:
         self.is_running = True
         if not await self.initialize():
             return
+            
         while self.is_running:
             if self.market_checker.is_market_open():
                 bot_state['market_open'] = True
@@ -173,7 +197,6 @@ class TradingBotService:
                 bot_state['market_open'] = False
                 bot_state['status'] = 'MARKET_CLOSED - WAITING'
                 await asyncio.sleep(30)
-# Background thread construction anchors
 bot_service = None
 bot_thread = None
 
@@ -247,7 +270,7 @@ def start():
 
 @app.route('/', methods=['GET'])
 def index():
-    return jsonify({'name': 'Automated Trading Bot API', 'version': '3.0-RiskManaged'}), 200
+    return jsonify({'name': 'Automated Trading Bot API', 'version': '3.0-DynamicSizing'}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
