@@ -13,7 +13,7 @@ from config import Settings
 
 logger = logging.getLogger(__name__)
 
-GROQ_URL = "https://groq.com"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 class GroqBrain:
