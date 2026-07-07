@@ -91,7 +91,7 @@ class MarketHoursChecker:
             next_day = datetime.fromtimestamp(next_day.timestamp() + 86400, tz=et)
         return next_day.replace(hour=9, minute=30, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S %Z")
 class TradingBotService:
-    """Trading bot running as a service with embedded risk metrics."""
+    """Trading bot running as a service with structural short-selling shields."""
     
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -127,14 +127,28 @@ class TradingBotService:
             logger.info(f"CYCLE #{bot_state['iterations']} | {cycle_start.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"{'='*60}")
             
-            # Stop-loss tracking
+            # 1. RISK TRACKING: Fetch active open positions
             current_positions = await self.executor.get_positions()
             STOP_LOSS_PERC = -0.02 
+            liquidated_symbols = set()
             
             for pos in current_positions:
                 symbol = pos['symbol']
                 unrealized_plpc = pos.get('unrealized_plpc', 0.0)
                 
+                # SHIELD A: Catch illegal short runs and reverse them back to neutral instantly
+                if float(pos['qty']) < 0:
+                    logger.warning(f"⚠️ Accident short detected for {symbol}. Order cover execution.")
+                    await self.executor.execute_trade(
+                        symbol=symbol,
+                        decision='BUY',
+                        quantity=abs(int(pos['qty'])),
+                        reason="Emergency dynamic short cover protection trigger"
+                    )
+                    liquidated_symbols.add(symbol)
+                    continue
+
+                # SHIELD B: Automated Stop Loss execution
                 if unrealized_plpc <= STOP_LOSS_PERC:
                     logger.warning(f"🚨 AUTOMATED RISK SAFETY TRIGGERED: [{symbol}] down {unrealized_plpc*100:.2f}%. Liquidating!")
                     await self.executor.execute_trade(
@@ -143,14 +157,22 @@ class TradingBotService:
                         quantity=int(pos['qty']),
                         reason="Emergency risk boundary breached"
                     )
+                    liquidated_symbols.add(symbol)
                     continue
 
+            # 2. MARKET DATA RETRIEVAL
             market_data = await self.executor.fetch_market_data()
             if not market_data:
                 logger.warning("No market data available, skipping cycle")
                 return
                 
+            # 3. AI ANALYSIS LOOP
             for symbol, single_asset_data in market_data.items():
+                # SHIELD C: Block double action executions inside the same loop cycle frame
+                if symbol in liquidated_symbols:
+                    logger.info(f"[{symbol}] Skipped on this frame to block double trading / short anomalies.")
+                    continue
+
                 packaged_data = {symbol: single_asset_data}
                 decision = self.ai_brain.analyze_patterns(packaged_data)
                 
@@ -170,6 +192,7 @@ class TradingBotService:
                 else:
                     logger.info(f"[{symbol}] Status: HOLD")
                     
+            # 4. MONITORING SYNC
             updated_positions = await self.executor.get_positions()
             account = await self.executor.get_account()
             
@@ -270,7 +293,7 @@ def start():
 
 @app.route('/', methods=['GET'])
 def index():
-    return jsonify({'name': 'Automated Trading Bot API', 'version': '3.0-DynamicSizing'}), 200
+    return jsonify({'name': 'Automated Trading Bot API', 'version': '3.5-ShortShieldActive'}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
